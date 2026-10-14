@@ -7,7 +7,7 @@ from shapely.geometry import Polygon, box
 # --- PATH CONFIGURATION ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IMAGE_PATH = os.path.join(BASE_DIR, "bac_park_empty.jpg")
-SPOTS_FILE = os.path.join(BASE_DIR, "parking_spots.json")
+SPOTS_FILE = os.path.join(BASE_DIR, "configs", "parking_spots.json")
 
 # Virtual vehicle bounding box dimensions (width and height in pixels)
 CAR_WIDTH = 60

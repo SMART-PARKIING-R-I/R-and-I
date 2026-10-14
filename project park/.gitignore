@@ -1,0 +1,10 @@
+Wallet_parkingdb/
+Wallet_parkingdb.zip
+.env
+venv/
+__pycache__/
+*.py[cod]
+parking.db
+parking.db-journal
+parking.db-shm
+parking.db-wal
