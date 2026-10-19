@@ -1,0 +1,6 @@
+Flask>=3.0,<4.0
+numpy
+opencv-python
+requests
+shapely
+ultralytics

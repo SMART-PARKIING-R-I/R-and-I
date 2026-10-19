@@ -1,0 +1,16 @@
+[
+  {
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARKING",
+    "source": 0,
+    "spots_file": "configs/parking_spots.json"
+  },
+
+  {
+    "camera_id": "CAM_NEW_LOT_1",
+    "lot_id": "SECONDARY_LOT",
+    "source": "Lot_2_empty.png", 
+    "spots_file": "configs/lot_B.json"
+  }
+  
+]
