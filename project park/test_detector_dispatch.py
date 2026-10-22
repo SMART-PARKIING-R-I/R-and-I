@@ -10,7 +10,7 @@ class DetectorDispatchTests(unittest.TestCase):
     def test_retries_http_failure_after_cooldown(self):
         worker = SingleCameraWorker(
             {
-                "camera_id": "CAM_BAC_MAIN",
+                "camera_id": "CAM_FEED_1",
                 "lot_id": "BAC_PARKING",
                 "source": 0,
                 "spots_file": "configs/parking_spots.json",
@@ -18,7 +18,7 @@ class DetectorDispatchTests(unittest.TestCase):
             shared_model=object(),
         )
         payload = {
-            "camera_id": "CAM_BAC_MAIN",
+            "camera_id": "CAM_FEED_1",
             "lot_id": "BAC_PARKING",
             "spots": [{"spot_id": "A-001", "status": "occupied"}],
         }

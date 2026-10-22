@@ -9,7 +9,7 @@ from detector import SingleCameraWorker
 class DetectorSourceTests(unittest.TestCase):
     def setUp(self):
         self.camera_config = {
-            "camera_id": "CAM_NEW_LOT_1",
+            "camera_id": "CAM_FEED_2",
             "lot_id": "SECONDARY_LOT",
             "source": "Lot_2_empty.png",
             "spots_file": "configs/lot_B.json",
@@ -17,7 +17,7 @@ class DetectorSourceTests(unittest.TestCase):
         self.worker = SingleCameraWorker(self.camera_config, shared_model=object())
         self.frame = object()
         self.payload = {
-            "camera_id": "CAM_NEW_LOT_1",
+            "camera_id": "CAM_FEED_2",
             "lot_id": "SECONDARY_LOT",
             "spots": [{"spot_id": "A-001", "status": "vacant"}],
         }
@@ -47,11 +47,11 @@ class DetectorSourceTests(unittest.TestCase):
         process_frame.assert_called_once_with(self.frame, smooth=False)
         dispatch.assert_called_once_with(self.payload)
         named_window.assert_called_once_with(
-            "Feed: CAM_NEW_LOT_1 (SECONDARY_LOT)",
+            "Feed: CAM_FEED_2 (SECONDARY_LOT)",
             detector.cv2.WINDOW_NORMAL,
         )
         resize_window.assert_called_once_with(
-            "Feed: CAM_NEW_LOT_1 (SECONDARY_LOT)",
+            "Feed: CAM_FEED_2 (SECONDARY_LOT)",
             1920,
             1080,
         )
@@ -81,11 +81,11 @@ class DetectorSourceTests(unittest.TestCase):
             self.worker.run()
 
         named_window.assert_called_once_with(
-            "Feed: CAM_NEW_LOT_1 (SECONDARY_LOT)",
+            "Feed: CAM_FEED_2 (SECONDARY_LOT)",
             detector.cv2.WINDOW_NORMAL,
         )
         resize_window.assert_called_once_with(
-            "Feed: CAM_NEW_LOT_1 (SECONDARY_LOT)",
+            "Feed: CAM_FEED_2 (SECONDARY_LOT)",
             1920,
             1080,
         )

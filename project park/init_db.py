@@ -13,9 +13,13 @@ def seed_database():
         cameras = json.load(config_file)
 
     connection = get_connection()
+    cursor = connection.cursor()
     try:
         with open(SCHEMA_FILE, "r", encoding="utf-8") as schema_file:
-            connection.executescript(schema_file.read())
+            schema_statements = schema_file.read().split(";")
+        for statement in schema_statements:
+            if statement.strip():
+                cursor.execute(statement)
 
         for camera in cameras:
             camera_id = camera["camera_id"]
@@ -25,29 +29,28 @@ def seed_database():
             with open(spots_path, "r", encoding="utf-8") as spots_file:
                 spots = json.load(spots_file)
 
-            connection.execute(
+            cursor.execute(
                 """
                 INSERT INTO parking_lots (lot_id, name)
-                VALUES (?, ?)
-                ON CONFLICT(lot_id) DO UPDATE SET name = excluded.name
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE name = VALUES(name)
                 """,
                 (lot_id, lot_id),
             )
-            connection.execute(
+            cursor.execute(
                 """
                 INSERT INTO cameras (camera_id, lot_id)
-                VALUES (?, ?)
-                ON CONFLICT(camera_id) DO UPDATE SET lot_id = excluded.lot_id
+                VALUES (%s, %s)
+                ON DUPLICATE KEY UPDATE lot_id = VALUES(lot_id)
                 """,
                 (camera_id, lot_id),
             )
             for spot in spots:
-                connection.execute(
+                cursor.execute(
                     """
                     INSERT INTO parking_spots (lot_id, spot_id, geometry)
-                    VALUES (?, ?, ?)
-                    ON CONFLICT(lot_id, spot_id)
-                    DO UPDATE SET geometry = excluded.geometry
+                    VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE geometry = VALUES(geometry)
                     """,
                     (lot_id, spot["spot_id"], json.dumps(spot["polygon"])),
                 )
@@ -57,6 +60,7 @@ def seed_database():
         connection.rollback()
         raise
     finally:
+        cursor.close()
         connection.close()
 
     print(f"Seeded {len(cameras)} cameras and their configured parking spaces.")

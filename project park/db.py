@@ -1,14 +1,31 @@
 import os
-import sqlite3
+
+import mysql.connector
+from dotenv import load_dotenv
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATABASE_PATH = os.path.join(BASE_DIR, "parking.db")
+ENV_FILE = os.path.join(BASE_DIR, ".env")
+
+
+class DatabaseConfigurationError(RuntimeError):
+    pass
 
 
 def get_connection():
-    database_path = os.getenv("PARKING_DB_PATH", DATABASE_PATH)
-    connection = sqlite3.connect(database_path, timeout=5.0)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+    load_dotenv(ENV_FILE, override=True)
+    password = os.getenv("MYSQL_PASSWORD")
+    if not password:
+        raise DatabaseConfigurationError(
+            f"MYSQL_PASSWORD is missing. Set it in {ENV_FILE} before starting the app."
+        )
+
+    return mysql.connector.connect(
+        host=os.getenv("MYSQL_HOST", "127.0.0.1"),
+        port=int(os.getenv("MYSQL_PORT", "3306")),
+        user=os.getenv("MYSQL_USER", "parking_app"),
+        password=password,
+        database=os.getenv("MYSQL_DATABASE", "smart_parking"),
+        connection_timeout=5,
+        charset="utf8mb4",
+    )

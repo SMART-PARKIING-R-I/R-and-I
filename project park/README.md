@@ -1,71 +1,161 @@
 # Smart Parking Prototype
 
-The detector posts parking-space occupancy to the Flask API at
-`http://127.0.0.1:5000/api/occupancy`. The API stores the latest status in a
-local SQLite database and adds a history row when a space changes between
-vacant and occupied. SQLite is included with Python, so no database server is
-needed for the demo.
+The detector posts parking-space occupancy to the Flask API on the same laptop.
+The API stores the latest status and status-change history in a local MySQL
+Server database.
 
-## Setup
+## Local MySQL setup
 
-1. Activate the project virtual environment and install the requirements:
+MySQL Workbench is the client used to manage MySQL; the MySQL Server service
+must also be installed and running. For this demo, create a local database and
+a dedicated app account in a Workbench SQL tab:
 
-   ```powershell
-   .\venv\Scripts\Activate.ps1
-   pip install -r requirements.txt
-   ```
+```sql
+CREATE DATABASE IF NOT EXISTS smart_parking
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
 
-2. Create the local database, schema, and configured lots/cameras/spaces:
+CREATE USER IF NOT EXISTS 'parking_app'@'127.0.0.1'
+  IDENTIFIED BY 'choose-a-local-password';
 
-   ```powershell
-   python .\init_db.py
-   ```
+GRANT ALL PRIVILEGES ON smart_parking.* TO 'parking_app'@'127.0.0.1';
+```
 
-   By default, this creates `parking.db` in this folder. To store it elsewhere,
-   set `PARKING_DB_PATH` before running both the initializer and backend:
+Replace `choose-a-local-password` with a password you choose locally. Do not
+commit it or send it to anyone. If MySQL Workbench already has a local server
+connection, run this script in that connection, then activate the
+`smart_parking` schema in the SCHEMAS panel.
 
-   ```powershell
-   $env:PARKING_DB_PATH = "C:\path\to\parking.db"
-   ```
+From the project folder in Command Prompt, install the Python connector:
 
-3. In one terminal, start the API and leave it running:
+```cmd
+venv\Scripts\python.exe -m pip install -r requirements.txt
+```
 
-   ```powershell
-   python .\backend.py
-   ```
+Create a `.env` file in the project folder with the database settings. The
+initializer and Flask API both read this file, regardless of which Command
+Prompt starts them:
 
-   Confirm the API responds before starting the detector:
+```text
+MYSQL_HOST=127.0.0.1
+MYSQL_PORT=3306
+MYSQL_USER=parking_app
+MYSQL_PASSWORD=the-password-you-chose
+MYSQL_DATABASE=smart_parking
+```
 
-   ```powershell
-   Invoke-RestMethod -Uri 'http://127.0.0.1:5000/api/health'
-   ```
+Replace the password with the one configured in Workbench. Do not commit or
+share `.env`. Next, create the tables and load the lots, cameras, parking
+spaces, and polygon coordinates:
 
-4. In another terminal, start the detector:
+```cmd
+venv\Scripts\python.exe init_db.py
+```
 
-   ```powershell
-   python .\detector.py
-   ```
+`init_db.py` creates/updates the tables from `schema.sql` and inserts the
+configured camera and spot data. Re-running it updates geometry but preserves
+current spot status and occupancy history.
+
+## Run the app
+
+In the first Command Prompt on the host laptop, start the API and leave it running:
+
+```cmd
+venv\Scripts\python.exe backend.py
+```
+
+Flask listens on `0.0.0.0:5000`, which makes the API reachable from other
+devices on the same LAN. This does not expose MySQL; `db.py` connects to
+`127.0.0.1:3306` on the host laptop.
+
+Find the host laptop's LAN IPv4 address with:
+
+```cmd
+ipconfig
+```
+
+Use the IPv4 address of the network adapter shared with the other devices
+(for example `192.168.1.25`). On the host, verify the API and database:
+
+```cmd
+curl.exe http://127.0.0.1:5000/api/health
+```
+
+A healthy response includes `"database":"connected"`. Start the detector in
+another host-laptop Command Prompt:
+
+```cmd
+venv\Scripts\python.exe detector.py
+```
+
+Other devices call the API using the host laptop's LAN address, for example:
+
+```text
+http://192.168.1.25:5000/api/health
+```
+
+Replace the example IP with the host's actual IPv4 address. Allow Python or
+TCP port 5000 through Windows Defender Firewall on the **Private** network if
+Windows prompts you. The client devices and host must be on the same reachable
+network. The demo API has no authentication, so use it only on a trusted local
+network; do not forward the port to the public internet.
 
 The secondary-lot source configured as `Lot_2_empty.png` is a still image, not
 a live camera. The detector processes it once and leaves its preview window
-open until you press `q`. The BAC camera uses the IP Webcam video stream URL
-configured in `cameras.json`.
+open until you press `q`. The BAC camera uses the IP Webcam stream URL in
+`cameras.json`. Keep IP Webcam running and both devices on the same network.
 
-Preview windows are resizable and request a 1920x1080 display size. The actual
-window may be limited by the desktop display; this setting does not change the
-camera stream's capture resolution, which is read from each incoming frame.
-
-`parking.db` is local demo data and is ignored by Git. `init_db.py` can be run
-again to refresh configured cameras and spot geometry; it preserves current
-spot status and occupancy history.
+Preview windows request a 1920x1080 display size. This does not change the
+camera stream resolution; the detector scales mapped coordinates to each
+incoming frame.
 
 ## API
+
+`GET /api/lots` lists the configured lots:
+
+```json
+{
+  "lots": [
+    { "lot_id": "BAC_PARKING", "name": "BAC_PARKING" }
+  ]
+}
+```
+
+`GET /api/lots/<lot_id>/spots` returns the current status and mapped geometry
+for every space in a lot. `updated_at` is an ISO 8601 timestamp, or `null`
+when the detector has not reported a status change for that space:
+
+```json
+{
+  "lot_id": "BAC_PARKING",
+  "name": "BAC_PARKING",
+  "spots": [
+    {
+      "spot_id": "A-001",
+      "geometry": [[10, 20], [30, 20], [30, 50], [10, 50]],
+      "status": "vacant",
+      "updated_at": null
+    }
+  ]
+}
+```
+
+`GET /api/lots/<lot_id>/events` returns recent occupancy changes, newest
+first. An optional `limit` query parameter accepts an integer from 1 to 100
+and defaults to 50. For example:
+
+```text
+GET /api/lots/BAC_PARKING/events?limit=20
+```
+
+Unknown lot IDs return HTTP 404. An invalid history limit returns HTTP 400;
+database connection errors return HTTP 503.
 
 `POST /api/occupancy` expects the detector's current payload format:
 
 ```json
 {
-  "camera_id": "CAM_BAC_MAIN",
+  "camera_id": "CAM_FEED_1",
   "lot_id": "BAC_PARKING",
   "spots": [
     { "spot_id": "A-001", "status": "occupied" }
@@ -75,29 +165,20 @@ spot status and occupancy history.
 
 Every camera and space in an update must have been loaded by `init_db.py`.
 Statuses must be `vacant` or `occupied`. Invalid payloads return HTTP 400,
-unregistered cameras/spaces return 404, and SQLite errors return 503. Valid
+unregistered cameras/spaces return 404, and MySQL errors return 503. Valid
 updates are stored transactionally; unchanged statuses do not create duplicate
-history events.
-
-`GET /api/health` is a lightweight API-process check; it does not test the
-database connection.
+history events. `GET /api/health` checks both the API and its MySQL connection.
 
 ## Remapping BAC parking spaces
 
-`draw_spots.py` displays `bac_park_empty.jpg` at its original dimensions and
-maps four clicked corners for each marked bay. The `s` key overwrites
-`configs/parking_spots.json`; `q` exits without saving. Map the actual bays,
-not the drive lanes. After saving, run `python .\init_db.py` to refresh the
-stored polygon geometry. Existing saved bays are displayed when the tool opens.
-Press Backspace to undo a corner of the bay currently being drawn, or `u` to
-remove the last completed bay so you can redraw it.
+`draw_spots.py` displays `bac_park_empty.jpg` and maps four clicked corners
+for each marked bay. The `s` key saves to `configs/parking_spots.json`; `q`
+exits without saving. Existing saved bays appear when the tool opens. Press
+Backspace to undo a corner or `u` to remove the last completed bay. After
+saving a new map, run `init_db.py` to update database geometry.
 
-For the BAC camera, `cameras.json` uses the IP Webcam stream URL
-`http://10.202.152.251:8080/video`. The `/browserfs.html` page is a browser
-viewer; the detector must use its `/video` stream endpoint. Keep IP Webcam
-running and both devices on the same network. If the camera's IP address
-changes, update `source` with the new HTTP video URL. The detector scales
-mapped coordinates from the `coordinate_reference` image dimensions to the
-incoming frame; the camera still needs the same viewpoint and framing as the
-reference image. Large aspect-ratio differences can distort the overlay and
-require remapping.
+For BAC, `cameras.json` uses the IP Webcam `/video` stream URL. If the phone's
+IP changes, update the `source` value. The detector scales polygons from the
+`coordinate_reference` image to the incoming frame. The camera still needs a
+similar viewpoint and framing; substantial viewpoint or aspect-ratio
+differences may require remapping.

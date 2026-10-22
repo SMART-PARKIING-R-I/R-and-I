@@ -1,8 +1,9 @@
-import sqlite3
+import json
 
 from flask import Flask, jsonify, request
+from mysql.connector import Error as MySQLError
 
-from db import get_connection
+from db import DatabaseConfigurationError, get_connection
 
 
 def create_app():
@@ -10,7 +11,126 @@ def create_app():
 
     @app.get("/api/health")
     def health():
-        return jsonify({"status": "ok"})
+        connection = None
+        try:
+            connection = get_connection()
+            connection.ping(reconnect=False)
+            return jsonify({"status": "ok", "database": "connected"})
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("MySQL health check failed")
+            return jsonify({"status": "unavailable", "database": "disconnected"}), 503
+        finally:
+            if connection is not None:
+                connection.close()
+
+    @app.get("/api/lots")
+    def list_lots():
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute("SELECT lot_id, name FROM parking_lots ORDER BY lot_id")
+            return jsonify({"lots": cursor.fetchall()})
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("Could not retrieve parking lots")
+            return jsonify({"error": "MySQL unavailable; parking lots could not be retrieved"}), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.get("/api/lots/<lot_id>/spots")
+    def list_parking_spots(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT lot_id, name FROM parking_lots WHERE lot_id = %s",
+                (lot_id,),
+            )
+            lot = cursor.fetchone()
+            if lot is None:
+                return jsonify({"error": f"Unknown parking lot: {lot_id}"}), 404
+
+            cursor.execute(
+                """
+                SELECT spot_id, geometry, status, updated_at
+                FROM parking_spots
+                WHERE lot_id = %s
+                ORDER BY spot_id
+                """,
+                (lot_id,),
+            )
+            spots = cursor.fetchall()
+            for spot in spots:
+                if isinstance(spot["geometry"], str):
+                    spot["geometry"] = json.loads(spot["geometry"])
+                if spot["updated_at"] is not None:
+                    spot["updated_at"] = spot["updated_at"].isoformat()
+
+            return jsonify({"lot_id": lot_id, "name": lot["name"], "spots": spots})
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("Could not retrieve parking spots for lot %s", lot_id)
+            return jsonify({
+                "error": "MySQL unavailable; parking spaces could not be retrieved"
+            }), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.get("/api/lots/<lot_id>/events")
+    def list_occupancy_events(lot_id):
+        raw_limit = request.args.get("limit", "50")
+        try:
+            limit = int(raw_limit)
+        except ValueError:
+            return jsonify({"error": "limit must be an integer between 1 and 100"}), 400
+        if not 1 <= limit <= 100:
+            return jsonify({"error": "limit must be an integer between 1 and 100"}), 400
+
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT lot_id FROM parking_lots WHERE lot_id = %s",
+                (lot_id,),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": f"Unknown parking lot: {lot_id}"}), 404
+
+            cursor.execute(
+                """
+                SELECT event_id, spot_id, camera_id, status, observed_at
+                FROM occupancy_events
+                WHERE lot_id = %s
+                ORDER BY observed_at DESC, event_id DESC
+                LIMIT %s
+                """,
+                (lot_id, limit),
+            )
+            events = cursor.fetchall()
+            for event in events:
+                event["observed_at"] = event["observed_at"].isoformat()
+
+            return jsonify({"lot_id": lot_id, "events": events})
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("Could not retrieve occupancy events for lot %s", lot_id)
+            return jsonify({
+                "error": "MySQL unavailable; occupancy history could not be retrieved"
+            }), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
 
     @app.post("/api/occupancy")
     def receive_occupancy():
@@ -57,11 +177,11 @@ def create_app():
         cursor = None
         try:
             connection = get_connection()
-            cursor = connection.cursor()
-            cursor.execute("BEGIN IMMEDIATE")
+            cursor = connection.cursor(dictionary=True)
+            connection.start_transaction()
 
             cursor.execute(
-                "SELECT camera_id FROM cameras WHERE camera_id = ? AND lot_id = ?",
+                "SELECT camera_id FROM cameras WHERE camera_id = %s AND lot_id = %s",
                 (camera_id, lot_id),
             )
             if cursor.fetchone() is None:
@@ -74,7 +194,8 @@ def create_app():
                     """
                     SELECT status
                     FROM parking_spots
-                    WHERE lot_id = ? AND spot_id = ?
+                    WHERE lot_id = %s AND spot_id = %s
+                    FOR UPDATE
                     """,
                     (lot_id, spot_id),
                 )
@@ -92,15 +213,15 @@ def create_app():
                 cursor.execute(
                     """
                     UPDATE parking_spots
-                    SET status = ?, updated_at = CURRENT_TIMESTAMP
-                    WHERE lot_id = ? AND spot_id = ?
+                    SET status = %s, updated_at = CURRENT_TIMESTAMP(6)
+                    WHERE lot_id = %s AND spot_id = %s
                     """,
                     (status, lot_id, spot_id),
                 )
                 cursor.execute(
                     """
                     INSERT INTO occupancy_events (lot_id, spot_id, camera_id, status)
-                    VALUES (?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s)
                     """,
                     (lot_id, spot_id, camera_id, status),
                 )
@@ -112,12 +233,12 @@ def create_app():
                 "received": len(normalized_spots),
                 "changed": changed_spots,
             })
-        except sqlite3.Error:
+        except (MySQLError, DatabaseConfigurationError):
             if connection is not None:
                 connection.rollback()
             app.logger.exception("Could not store occupancy update")
             return jsonify({
-                "error": "Database unavailable; occupancy update was not saved"
+                "error": "MySQL unavailable; occupancy update was not saved"
             }), 503
         finally:
             if cursor is not None:
@@ -129,4 +250,4 @@ def create_app():
 
 
 if __name__ == "__main__":
-    create_app().run(host="127.0.0.1", port=5000, debug=False)
+    create_app().run(host="0.0.0.0", port=5000, debug=False)
