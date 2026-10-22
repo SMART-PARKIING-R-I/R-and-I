@@ -8,3 +8,4 @@ parking.db
 parking.db-journal
 parking.db-shm
 parking.db-wal
+.venv/
