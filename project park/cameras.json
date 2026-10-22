@@ -2,7 +2,8 @@
   {
     "camera_id": "CAM_BAC_MAIN",
     "lot_id": "BAC_PARKING",
-    "source": 0,
+    "source": "http://10.202.152.251:8080/video",
+    "coordinate_reference": "bac_park_empty.jpg",
     "spots_file": "configs/parking_spots.json"
   },
 
@@ -10,6 +11,7 @@
     "camera_id": "CAM_NEW_LOT_1",
     "lot_id": "SECONDARY_LOT",
     "source": "Lot_2_empty.png", 
+    "coordinate_reference": "Lot_2_empty.png",
     "spots_file": "configs/lot_B.json"
   }
   
