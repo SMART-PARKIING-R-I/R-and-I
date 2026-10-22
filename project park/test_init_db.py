@@ -59,6 +59,9 @@ class DatabaseInitializationTests(unittest.TestCase):
         self.assertTrue(
             any("CREATE TABLE IF NOT EXISTS occupancy_events" in query for query in sql_statements)
         )
+        self.assertTrue(
+            any("CREATE TABLE IF NOT EXISTS assignments" in query for query in sql_statements)
+        )
         self.assertEqual(
             sum("INSERT INTO cameras" in query for query in sql_statements),
             len(cameras),

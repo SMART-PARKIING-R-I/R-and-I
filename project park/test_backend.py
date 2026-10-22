@@ -14,6 +14,8 @@ class FakeCursor:
         self.last_query = None
         self.last_params = None
         self.events = []
+        self.rowcount = 1
+        self.lastrowid = 7
 
     def execute(self, query, params=()):
         self.last_query = query
@@ -28,6 +30,23 @@ class FakeCursor:
             )
         elif "SELECT lot_id FROM parking_lots WHERE lot_id" in query:
             self.result = {"lot_id": params[0]} if params[0] == "BAC_PARKING" else None
+        elif "SELECT name FROM parking_lots WHERE lot_id" in query:
+            self.result = (
+                {"name": "BAC_PARKING"}
+                if params[0] == "BAC_PARKING"
+                else None
+            )
+        elif "SELECT spot_id, status," in query:
+            self.rows = [
+                {"spot_id": "A-001", "status": "vacant", "reserved": 0},
+                {"spot_id": "A-002", "status": "occupied", "reserved": 0},
+            ]
+        elif "SELECT parking_spots.spot_id" in query:
+            self.result = {"spot_id": "A-001"}
+        elif "INSERT INTO assignments" in query:
+            self.lastrowid = 7
+        elif "UPDATE assignments" in query:
+            self.rowcount = 1
         elif "SELECT spot_id, geometry, status, updated_at" in query:
             self.rows = [{
                 "spot_id": "A-001",
@@ -206,6 +225,56 @@ class OccupancyEndpointTests(unittest.TestCase):
             response = self.client.get("/api/lots/UNKNOWN/spots")
 
         self.assertEqual(response.status_code, 404)
+        self.assertTrue(connection.closed)
+
+    def test_kiosk_lot_status_counts_available_spaces(self):
+        connection = FakeConnection({})
+        with patch.object(backend, "get_connection", return_value=connection):
+            response = self.client.get("/api/lots/BAC_PARKING/status")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["total"], 2)
+        self.assertEqual(response.json["free"], 1)
+        self.assertEqual(response.json["name"], "BAC_PARKING")
+        self.assertTrue(connection.closed)
+
+    def test_kiosk_unknown_lot_status_returns_404(self):
+        connection = FakeConnection({})
+        with patch.object(backend, "get_connection", return_value=connection):
+            response = self.client.get("/api/lots/UNKNOWN/status")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(connection.closed)
+
+    def test_assignment_is_created_for_a_vacant_spot(self):
+        connection = FakeConnection({})
+        with patch.object(backend, "get_connection", return_value=connection):
+            response = self.client.post("/api/lots/BAC_PARKING/assign")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["assignment_id"], 7)
+        self.assertEqual(response.json["spot_id"], "A-001")
+        self.assertTrue(connection.committed)
+        self.assertTrue(connection.closed)
+
+    def test_assignment_confirmation_updates_only_pending_assignment(self):
+        connection = FakeConnection({})
+        with patch.object(backend, "get_connection", return_value=connection):
+            response = self.client.post("/api/assignments/7/confirm")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(connection.committed)
+        self.assertIn("status = 'pending'", connection.fake_cursor.last_query)
+        self.assertTrue(connection.closed)
+
+    def test_assignment_can_be_manually_cancelled(self):
+        connection = FakeConnection({})
+        with patch.object(backend, "get_connection", return_value=connection):
+            response = self.client.post("/api/assignments/7/cancel")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(connection.committed)
+        self.assertIn("status = 'cancelled'", connection.fake_cursor.last_query)
         self.assertTrue(connection.closed)
 
     def test_lists_recent_events_with_bounded_limit(self):

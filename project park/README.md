@@ -100,14 +100,19 @@ Windows prompts you. The client devices and host must be on the same reachable
 network. The demo API has no authentication, so use it only on a trusted local
 network; do not forward the port to the public internet.
 
-The secondary-lot source configured as `Lot_2_empty.png` is a still image, not
-a live camera. The detector processes it once and leaves its preview window
-open until you press `q`. The BAC camera uses the IP Webcam stream URL in
-`cameras.json`. Keep IP Webcam running and both devices on the same network.
+Only `CAM_FEED_1` for `BAC_PARKING` is currently enabled in `cameras.json`.
+The detector starts one worker for each configured camera entry. Add another
+entry there when a second feed is ready. The current BAC source is an IP
+Webcam stream URL; keep the phone stream running and both devices on the same
+network.
 
-Preview windows request a 1920x1080 display size. This does not change the
-camera stream resolution; the detector scales mapped coordinates to each
-incoming frame.
+Preview windows request a 1920x1080 display size; this does not change camera
+capture resolution. Spot coordinates are scaled from each camera's configured
+`coordinate_reference` image to the incoming frame size.
+
+If a camera cannot be opened or returns no frame, its worker logs an error
+and exits. MySQL is the database for this project; the local `parking.db`
+SQLite file from earlier experiments is not used.
 
 ## API
 
@@ -168,6 +173,19 @@ Statuses must be `vacant` or `occupied`. Invalid payloads return HTTP 400,
 unregistered cameras/spaces return 404, and MySQL errors return 503. Valid
 updates are stored transactionally; unchanged statuses do not create duplicate
 history events. `GET /api/health` checks both the API and its MySQL connection.
+
+## Kiosk
+
+Open `http://127.0.0.1:5000/` on the host laptop to display the kiosk page.
+It polls the selected lot's status and can assign the next available space.
+Active assignments remain reserved until the detector reports the spot as
+occupied or a user cancels them with `POST /api/assignments/<id>/cancel`.
+Assignments do not expire automatically.
+
+`GET /api/lots/<lot_id>/status` reports total and available spaces.
+`GET /api/lots/<lot_id>/map` returns mapped polygons and reference-image
+dimensions. `POST /api/lots/<lot_id>/assign` creates an assignment;
+`POST /api/assignments/<id>/confirm` confirms it.
 
 ## Remapping BAC parking spaces
 

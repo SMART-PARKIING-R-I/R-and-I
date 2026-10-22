@@ -1,13 +1,19 @@
 import json
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, render_template, request
 from mysql.connector import Error as MySQLError
 
 from db import DatabaseConfigurationError, get_connection
+import cv2
+import os
 
 
 def create_app():
     app = Flask(__name__)
+
+    @app.get("/")
+    def index():
+        return render_template("kiosk.html", lot_id="BAC_PARKING")
 
     @app.get("/api/health")
     def health():
@@ -225,6 +231,16 @@ def create_app():
                     """,
                     (lot_id, spot_id, camera_id, status),
                 )
+                if status == "occupied":
+                    cursor.execute(
+                        """
+                        UPDATE assignments
+                        SET status = 'fulfilled'
+                        WHERE lot_id = %s AND spot_id = %s
+                          AND status = 'confirmed'
+                        """,
+                        (lot_id, spot_id),
+                    )
                 changed_spots.append(spot_id)
 
             connection.commit()
@@ -240,6 +256,276 @@ def create_app():
             return jsonify({
                 "error": "MySQL unavailable; occupancy update was not saved"
             }), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    # -------------------------------------------------------------------
+    # Kiosk & Mobile App API Endpoints
+    # -------------------------------------------------------------------
+
+    @app.get("/api/lots/<lot_id>/status")
+    def get_lot_status(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT name FROM parking_lots WHERE lot_id = %s",
+                (lot_id,),
+            )
+            lot = cursor.fetchone()
+            if lot is None:
+                return jsonify({"error": f"Unknown lot: {lot_id}"}), 404
+
+            cursor.execute(
+                """
+                SELECT spot_id, status,
+                    EXISTS (
+                        SELECT 1
+                        FROM assignments
+                        WHERE assignments.lot_id = parking_spots.lot_id
+                          AND assignments.spot_id = parking_spots.spot_id
+                          AND assignments.status IN ('pending', 'confirmed')
+                    ) AS reserved
+                FROM parking_spots
+                WHERE lot_id = %s
+                ORDER BY spot_id
+                """,
+                (lot_id,),
+            )
+            rows = cursor.fetchall()
+            spots = [
+                {"spot_id": row["spot_id"], "status": row["status"]}
+                for row in rows
+            ]
+            total = len(spots)
+            free = sum(
+                1
+                for row in rows
+                if row["status"] == "vacant" and not row["reserved"]
+            )
+
+            return jsonify({
+                "lot_id": lot_id,
+                "name": lot["name"],
+                "total": total,
+                "free": free,
+                "spots": spots
+            })
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("Could not retrieve status for lot %s", lot_id)
+            return jsonify({"error": "MySQL unavailable; lot status could not be retrieved"}), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.get("/api/lots/<lot_id>/map")
+    def get_lot_map(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            cursor.execute(
+                "SELECT lot_id FROM parking_lots WHERE lot_id = %s",
+                (lot_id,),
+            )
+            if cursor.fetchone() is None:
+                return jsonify({"error": f"Unknown lot: {lot_id}"}), 404
+
+            cursor.execute(
+                """
+                SELECT spot_id, geometry
+                FROM parking_spots
+                WHERE lot_id = %s
+                ORDER BY spot_id
+                """,
+                (lot_id,),
+            )
+            rows = cursor.fetchall()
+            bays = []
+            for index, row in enumerate(rows, start=1):
+                polygon = row["geometry"]
+                if isinstance(polygon, str):
+                    polygon = json.loads(polygon)
+                bays.append({
+                    "number": index,
+                    "spot_id": row["spot_id"],
+                    "polygon": polygon
+                })
+
+            with open(os.path.join(os.path.dirname(__file__), "cameras.json"), encoding="utf-8") as config_file:
+                cameras = json.load(config_file)
+            camera = next(
+                (item for item in cameras if item["lot_id"] == lot_id),
+                None,
+            )
+            if camera is None:
+                return jsonify({"error": f"No camera configured for lot: {lot_id}"}), 404
+
+            reference_path = os.path.join(
+                os.path.dirname(__file__),
+                camera.get("coordinate_reference", camera["spots_file"]),
+            )
+            reference_image = cv2.imread(reference_path)
+            if reference_image is None:
+                app.logger.error("Could not read map reference image: %s", reference_path)
+                return jsonify({"error": "Map reference image could not be read"}), 500
+
+            return jsonify({
+                "lot_id": lot_id,
+                "width": int(reference_image.shape[1]),
+                "height": int(reference_image.shape[0]),
+                "spots": bays
+            })
+        except (MySQLError, DatabaseConfigurationError):
+            app.logger.exception("Could not retrieve map for lot %s", lot_id)
+            return jsonify({"error": "MySQL unavailable; lot map could not be retrieved"}), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.post("/api/lots/<lot_id>/assign")
+    def assign_spot(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor(dictionary=True)
+            connection.start_transaction()
+            cursor.execute(
+                "SELECT lot_id FROM parking_lots WHERE lot_id = %s",
+                (lot_id,),
+            )
+            if cursor.fetchone() is None:
+                connection.rollback()
+                return jsonify({"error": f"Unknown lot: {lot_id}"}), 404
+
+            cursor.execute(
+                """
+                SELECT parking_spots.spot_id
+                FROM parking_spots
+                WHERE parking_spots.lot_id = %s
+                  AND parking_spots.status = 'vacant'
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM assignments
+                      WHERE assignments.lot_id = parking_spots.lot_id
+                        AND assignments.spot_id = parking_spots.spot_id
+                        AND assignments.status IN ('pending', 'confirmed')
+                  )
+                ORDER BY spot_id ASC LIMIT 1
+                FOR UPDATE
+                """,
+                (lot_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                connection.rollback()
+                return jsonify({"error": "Lot is full"}), 409
+
+            assigned_spot_id = row["spot_id"]
+
+            cursor.execute(
+                """
+                INSERT INTO assignments (lot_id, spot_id, status)
+                VALUES (%s, %s, 'pending')
+                """,
+                (lot_id, assigned_spot_id),
+            )
+            assignment_id = cursor.lastrowid
+            connection.commit()
+
+            # Extract integer spot number (e.g. "A-012" -> 12)
+            try:
+                spot_num = int(assigned_spot_id.split("-")[-1])
+            except ValueError:
+                spot_num = 1
+
+            return jsonify({
+                "assignment_id": assignment_id,
+                "spot_id": assigned_spot_id,
+                "number": spot_num,
+                "steps": [
+                    "Drive past the gate barrier.",
+                    f"Follow the road directly to bay {assigned_spot_id}."
+                ]
+            })
+        except (MySQLError, DatabaseConfigurationError):
+            if connection is not None:
+                connection.rollback()
+            app.logger.exception("Could not assign a spot in lot %s", lot_id)
+            return jsonify({"error": "MySQL unavailable; parking space was not assigned"}), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.post("/api/assignments/<int:assignment_id>/confirm")
+    def confirm_assignment(assignment_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE assignments
+                SET status = 'confirmed'
+                WHERE assignment_id = %s AND status = 'pending'
+                """,
+                (assignment_id,),
+            )
+            if cursor.rowcount == 0:
+                connection.rollback()
+                return jsonify({"error": "Pending assignment not found"}), 404
+            connection.commit()
+            return jsonify({"status": "ok", "assignment_id": assignment_id})
+        except (MySQLError, DatabaseConfigurationError):
+            if connection is not None:
+                connection.rollback()
+            app.logger.exception("Could not confirm assignment %s", assignment_id)
+            return jsonify({"error": "MySQL unavailable; assignment was not confirmed"}), 503
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.post("/api/assignments/<int:assignment_id>/cancel")
+    def cancel_assignment(assignment_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute(
+                """
+                UPDATE assignments
+                SET status = 'cancelled'
+                WHERE assignment_id = %s AND status IN ('pending', 'confirmed')
+                """,
+                (assignment_id,),
+            )
+            if cursor.rowcount == 0:
+                connection.rollback()
+                return jsonify({"error": "Active assignment not found"}), 404
+            connection.commit()
+            return jsonify({"status": "ok", "assignment_id": assignment_id})
+        except (MySQLError, DatabaseConfigurationError):
+            if connection is not None:
+                connection.rollback()
+            app.logger.exception("Could not cancel assignment %s", assignment_id)
+            return jsonify({"error": "MySQL unavailable; assignment was not cancelled"}), 503
         finally:
             if cursor is not None:
                 cursor.close()

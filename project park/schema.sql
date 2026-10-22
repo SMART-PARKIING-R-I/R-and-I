@@ -37,3 +37,16 @@ CREATE TABLE IF NOT EXISTS occupancy_events (
         FOREIGN KEY (camera_id, lot_id)
         REFERENCES cameras (camera_id, lot_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS assignments (
+    assignment_id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    lot_id VARCHAR(64) NOT NULL,
+    spot_id VARCHAR(64) NOT NULL,
+    status ENUM('pending', 'confirmed', 'fulfilled', 'cancelled') NOT NULL DEFAULT 'pending',
+    created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+    KEY ix_assignments_lot_status (lot_id, status),
+    KEY ix_assignments_spot_status (lot_id, spot_id, status),
+    CONSTRAINT fk_assignments_spot
+        FOREIGN KEY (lot_id, spot_id)
+        REFERENCES parking_spots (lot_id, spot_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

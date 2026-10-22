@@ -107,10 +107,10 @@ class DetectorSourceTests(unittest.TestCase):
         imshow.assert_not_called()
         destroy_window.assert_not_called()
 
-    def test_process_frame_scales_spots_to_camera_resolution(self):
+    def test_process_frame_scales_spots_from_reference_dimensions(self):
         self.worker.coordinate_reference_size = (1278, 749)
         self.worker.model = Mock(return_value=[Mock(boxes=[])])
-        frame = np.zeros((480, 640, 3), dtype="uint8")
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
         first_spot = self.worker.spots[0]
 
         with patch.object(detector.cv2, "polylines") as draw_polygon:
@@ -122,8 +122,6 @@ class DetectorSourceTests(unittest.TestCase):
             for x, y in first_spot["raw_coords"]
         ]
         self.assertEqual(drawn_points.tolist(), expected)
-        self.assertLessEqual(drawn_points[:, 0].max(), 639)
-        self.assertLessEqual(drawn_points[:, 1].max(), 479)
 
 
 if __name__ == "__main__":

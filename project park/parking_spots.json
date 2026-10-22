@@ -1,0 +1,462 @@
+[
+  {
+    "spot_id": "A-001",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        136,
+        1122
+      ],
+      [
+        17,
+        1284
+      ],
+      [
+        400,
+        1228
+      ],
+      [
+        424,
+        1104
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-002",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        412,
+        1228
+      ],
+      [
+        713,
+        1171
+      ],
+      [
+        670,
+        1077
+      ],
+      [
+        438,
+        1108
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-003",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        684,
+        1077
+      ],
+      [
+        721,
+        1163
+      ],
+      [
+        966,
+        1130
+      ],
+      [
+        891,
+        1050
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-004",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        977,
+        1124
+      ],
+      [
+        1173,
+        1093
+      ],
+      [
+        1069,
+        1022
+      ],
+      [
+        901,
+        1046
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-005",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1083,
+        1022
+      ],
+      [
+        1179,
+        1087
+      ],
+      [
+        1355,
+        1061
+      ],
+      [
+        1232,
+        999
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-006",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1357,
+        1057
+      ],
+      [
+        1513,
+        1038
+      ],
+      [
+        1370,
+        983
+      ],
+      [
+        1243,
+        997
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-007",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1378,
+        981
+      ],
+      [
+        1519,
+        1034
+      ],
+      [
+        1640,
+        1018
+      ],
+      [
+        1490,
+        962
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-008",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1640,
+        1014
+      ],
+      [
+        1760,
+        999
+      ],
+      [
+        1599,
+        946
+      ],
+      [
+        1497,
+        962
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-009",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1611,
+        936
+      ],
+      [
+        1760,
+        997
+      ],
+      [
+        1855,
+        981
+      ],
+      [
+        1699,
+        936
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-010",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1853,
+        979
+      ],
+      [
+        1936,
+        960
+      ],
+      [
+        1783,
+        926
+      ],
+      [
+        1707,
+        936
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-011",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        275,
+        956
+      ],
+      [
+        220,
+        1028
+      ],
+      [
+        451,
+        1014
+      ],
+      [
+        455,
+        950
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-012",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        461,
+        954
+      ],
+      [
+        457,
+        1014
+      ],
+      [
+        647,
+        991
+      ],
+      [
+        623,
+        936
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-013",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        631,
+        938
+      ],
+      [
+        653,
+        987
+      ],
+      [
+        817,
+        971
+      ],
+      [
+        782,
+        924
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-014",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        793,
+        923
+      ],
+      [
+        823,
+        975
+      ],
+      [
+        973,
+        958
+      ],
+      [
+        915,
+        911
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-015",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        926,
+        911
+      ],
+      [
+        975,
+        954
+      ],
+      [
+        1110,
+        942
+      ],
+      [
+        1044,
+        897
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-016",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1048,
+        897
+      ],
+      [
+        1116,
+        938
+      ],
+      [
+        1232,
+        928
+      ],
+      [
+        1155,
+        889
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-017",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1157,
+        889
+      ],
+      [
+        1235,
+        924
+      ],
+      [
+        1349,
+        913
+      ],
+      [
+        1265,
+        881
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-018",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1427,
+        872
+      ],
+      [
+        1511,
+        905
+      ],
+      [
+        1578,
+        889
+      ],
+      [
+        1497,
+        864
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-019",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1582,
+        891
+      ],
+      [
+        1662,
+        883
+      ],
+      [
+        1574,
+        858
+      ],
+      [
+        1505,
+        862
+      ]
+    ]
+  },
+  {
+    "spot_id": "A-020",
+    "camera_id": "CAM_BAC_MAIN",
+    "lot_id": "BAC_PARK_A",
+    "polygon": [
+      [
+        1578,
+        856
+      ],
+      [
+        1666,
+        881
+      ],
+      [
+        1736,
+        876
+      ],
+      [
+        1634,
+        850
+      ]
+    ]
+  }
+]
