@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAC Parking Kiosk</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0; padding: 0;
+            background-color: #0F172A;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .header {
+            background-color: #1E293B;
+            padding: 30px;
+            text-align: center;
+            border-bottom: 4px solid #2563EB;
+        }
+        .header h1 { margin: 0; font-size: 3rem; letter-spacing: 2px; }
+        .header p { margin: 10px 0 0 0; color: #94A3B8; font-size: 1.5rem; }
+        
+        .container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        .status-badge {
+            background-color: #16A34A;
+            padding: 20px 40px;
+            border-radius: 50px;
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 40px;
+            box-shadow: 0 10px 25px rgba(22, 163, 74, 0.3);
+            transition: background-color 0.3s;
+        }
+        .status-badge.full { background-color: #DC2626; box-shadow: 0 10px 25px rgba(220, 38, 38, 0.3); }
+
+        .btn-assign {
+            background-color: #2563EB;
+            color: white;
+            border: none;
+            padding: 40px 80px;
+            font-size: 3rem;
+            font-weight: bold;
+            border-radius: 20px;
+            cursor: pointer;
+            box-shadow: 0 15px 35px rgba(37, 99, 235, 0.4);
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .btn-assign:active { transform: scale(0.95); }
+        .btn-assign:disabled { background-color: #475569; cursor: not-allowed; box-shadow: none; transform: none;}
+
+        .assignment-view { display: none; }
+        .spot-display {
+            font-size: 8rem;
+            font-weight: 900;
+            color: #16A34A;
+            margin: 20px 0;
+            text-shadow: 0 0 20px rgba(22, 163, 74, 0.5);
+        }
+        
+        .reset-text { margin-top: 40px; color: #94A3B8; font-size: 1.5rem; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>BOTSWANA ACCOUNTANCY COLLEGE</h1>
+        <p>Smart Parking Guidance System</p>
+    </div>
+
+    <!-- Main Idle View -->
+    <div class="container" id="idle-view">
+        <div class="status-badge" id="status-badge">Loading cameras...</div>
+        <button class="btn-assign" id="btn-assign" onclick="assignSpace()" disabled>Tap to Find a Space</button>
+    </div>
+
+    <!-- Assignment View -->
+    <div class="container assignment-view" id="assign-view">
+        <h2 style="font-size: 3rem; margin: 0; color: #cbd5e1;">Proceed to Space</h2>
+        <div class="spot-display" id="assigned-spot">A-000</div>
+        <p style="font-size: 2rem;">The barrier will now open.</p>
+        <p class="reset-text">Screen will reset in <span id="countdown">8</span> seconds...</p>
+    </div>
+
+    <script>
+        const LOT_ID = "{{ lot_id }}"; // Passed from Flask
+        let isAssigning = false;
+
+        // Poll the backend for live status every 2 seconds
+        setInterval(fetchStatus, 2000);
+        fetchStatus();
+
+        async function fetchStatus() {
+            if (isAssigning) return;
+            try {
+                const res = await fetch(`/api/lots/${LOT_ID}/status`);
+                const data = await res.json();
+                
+                const badge = document.getElementById('status-badge');
+                const btn = document.getElementById('btn-assign');
+                
+                if (data.free > 0) {
+                    badge.textContent = `${data.free} Spaces Available`;
+                    badge.className = 'status-badge';
+                    btn.disabled = false;
+                    btn.textContent = "Tap to Find a Space";
+                } else {
+                    badge.textContent = `LOT IS FULL`;
+                    badge.className = 'status-badge full';
+                    btn.disabled = true;
+                    btn.textContent = "Please Wait...";
+                }
+            } catch (err) {
+                document.getElementById('status-badge').textContent = "System Offline";
+            }
+        }
+
+        async function assignSpace() {
+            isAssigning = true;
+            document.getElementById('btn-assign').textContent = "Locating...";
+            
+            try {
+                const res = await fetch(`/api/lots/${LOT_ID}/assign`, { method: 'POST' });
+                if (res.status === 409) throw new Error("Full");
+                
+                const data = await res.json();
+                
+                // Show Assignment View
+                document.getElementById('idle-view').style.display = 'none';
+                document.getElementById('assign-view').style.display = 'flex';
+                document.getElementById('assigned-spot').textContent = data.spot_id;
+
+                // Auto-confirm the assignment so it gets locked in the DB
+                fetch(`/api/assignments/${data.assignment_id}/confirm`, { method: 'POST' });
+
+                // Start Reset Countdown
+                let timeLeft = 8;
+                const timer = setInterval(() => {
+                    timeLeft--;
+                    document.getElementById('countdown').textContent = timeLeft;
+                    if (timeLeft <= 0) {
+                        clearInterval(timer);
+                        resetKiosk();
+                    }
+                }, 1000);
+
+            } catch (err) {
+                alert("Lot is full or system error!");
+                resetKiosk();
+            }
+        }
+
+        function resetKiosk() {
+            document.getElementById('idle-view').style.display = 'flex';
+            document.getElementById('assign-view').style.display = 'none';
+            isAssigning = false;
+            fetchStatus();
+        }
+    </script>
+</body>
+</html>

@@ -1,12 +1,16 @@
 import sqlite3
-
-from flask import Flask, jsonify, request
-
+import json
+from flask import Flask, jsonify, request, render_template
 from db import get_connection
 
 
 def create_app():
     app = Flask(__name__)
+
+    @app.get("/")
+    def index():
+        # Serves the gate kiosk HTML view
+        return render_template("kiosk.html", lot_id="BAC_PARK_A")
 
     @app.get("/api/health")
     def health():
@@ -125,8 +129,179 @@ def create_app():
             if connection is not None:
                 connection.close()
 
+    # -------------------------------------------------------------------
+    # Kiosk & Mobile App API Endpoints
+    # -------------------------------------------------------------------
+
+    @app.get("/api/lots/<lot_id>/status")
+    def get_lot_status(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            cursor.execute(
+                "SELECT spot_id, status FROM parking_spots WHERE lot_id = ?",
+                (lot_id,)
+            )
+            rows = cursor.fetchall()
+            if not rows:
+                return jsonify({"error": f"Unknown lot: {lot_id}"}), 404
+
+            spots = [{"spot_id": row["spot_id"], "status": row["status"]} for row in rows]
+            total = len(spots)
+            free = sum(1 for s in spots if s["status"] == "vacant")
+
+            return jsonify({
+                "lot_id": lot_id,
+                "name": "Parking Space A",
+                "total": total,
+                "free": free,
+                "spots": spots
+            })
+        except sqlite3.Error:
+            app.logger.exception("Error reading lot status")
+            return jsonify({"error": "Database error"}), 500
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.get("/api/lots/<lot_id>/map")
+    def get_lot_map(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            cursor.execute(
+                "SELECT spot_id, polygon FROM parking_spots WHERE lot_id = ?",
+                (lot_id,)
+            )
+            rows = cursor.fetchall()
+            
+            bays = []
+            for idx, row in enumerate(rows, start=1):
+                raw_poly = row["polygon"]
+                polygon = json.loads(raw_poly) if isinstance(raw_poly, str) else raw_poly
+                bays.append({
+                    "number": idx,
+                    "spot_id": row["spot_id"],
+                    "polygon": polygon
+                })
+
+            return jsonify({
+                "lot_id": lot_id,
+                "width": 2560,
+                "height": 1179,
+                "entrance": [200, 1100],
+                "spots": bays
+            })
+        except sqlite3.Error:
+            app.logger.exception("Error fetching lot map")
+            return jsonify({"error": "Database error"}), 500
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.post("/api/lots/<lot_id>/assign")
+    def assign_spot(lot_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+            cursor.execute("BEGIN IMMEDIATE")
+
+            # Updated query: removed 'polygon' column dependency
+            cursor.execute(
+                """
+                SELECT spot_id FROM parking_spots
+                WHERE lot_id = ? AND status = 'vacant'
+                ORDER BY spot_id ASC LIMIT 1
+                """,
+                (lot_id,)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                connection.rollback()
+                return jsonify({"error": "Lot is full"}), 409
+
+            assigned_spot_id = row["spot_id"]
+
+            cursor.execute(
+                """
+                INSERT INTO assignments (lot_id, spot_id, status)
+                VALUES (?, ?, 'pending')
+                """,
+                (lot_id, assigned_spot_id)
+            )
+            assignment_id = cursor.lastrowid
+            connection.commit()
+
+            # Extract integer spot number (e.g. "A-012" -> 12)
+            try:
+                spot_num = int(assigned_spot_id.split("-")[-1])
+            except ValueError:
+                spot_num = 1
+
+            return jsonify({
+                "assignment_id": assignment_id,
+                "spot_id": assigned_spot_id,
+                "number": spot_num,
+                "route": [[200, 1100], [400, 1100]],
+                "steps": [
+                    "Drive past the gate barrier.",
+                    f"Follow the road directly to bay {assigned_spot_id}."
+                ]
+            })
+        except sqlite3.Error:
+            if connection is not None:
+                connection.rollback()
+            app.logger.exception("Error assigning spot")
+            return jsonify({"error": "Database error"}), 500
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
+    @app.post("/api/assignments/<int:assignment_id>/confirm")
+    def confirm_assignment(assignment_id):
+        connection = None
+        cursor = None
+        try:
+            connection = get_connection()
+            cursor = connection.cursor()
+
+            cursor.execute(
+                """
+                UPDATE assignments
+                SET status = 'confirmed'
+                WHERE id = ?
+                """,
+                (assignment_id,)
+            )
+            connection.commit()
+            return jsonify({"status": "ok", "assignment_id": assignment_id})
+        except sqlite3.Error:
+            if connection is not None:
+                connection.rollback()
+            app.logger.exception("Error confirming assignment")
+            return jsonify({"error": "Database error"}), 500
+        finally:
+            if cursor is not None:
+                cursor.close()
+            if connection is not None:
+                connection.close()
+
     return app
 
 
 if __name__ == "__main__":
-    create_app().run(host="127.0.0.1", port=5000, debug=False)
+    create_app().run(host="0.0.0.0", port=5000, debug=False)

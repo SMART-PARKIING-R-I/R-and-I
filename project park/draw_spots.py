@@ -1,157 +1,105 @@
 import os
 import cv2
 import json
-import numpy as np
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-IMAGE_PATH = os.path.join(BASE_DIR, "bac_park_empty.jpg")
-OUTPUT_JSON = os.path.join(BASE_DIR, "configs", "parking_spots.json")
+IMAGE_PATH = os.path.join(BASE_DIR, "bac_parkA_empty.jpg")
+OUTPUT_JSON = os.path.join(BASE_DIR, "parking_spots.json")
+
+# Target display height so the window fits on standard monitor displays
+DISPLAY_HEIGHT = 720
 
 current_polygon = []
 all_spots = []
 spot_counter = 1
-img = None
-img_copy = None
-
-
-def redraw_overlay():
-    global img_copy
-
-    img_copy = img.copy()
-    for spot in all_spots:
-        points = spot["polygon"]
-        points_np = np.array(points, dtype="int32").reshape((-1, 1, 2))
-        cv2.polylines(img_copy, [points_np], isClosed=True, color=(255, 0, 0), thickness=2)
-        cv2.putText(
-            img_copy,
-            spot["spot_id"],
-            (points[0][0], points[0][1] - 10),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 0),
-            2,
-        )
-
-    for index, point in enumerate(current_polygon):
-        cv2.circle(img_copy, tuple(point), 5, (0, 255, 0), -1)
-        if index:
-            cv2.line(
-                img_copy,
-                tuple(current_polygon[index - 1]),
-                tuple(point),
-                (255, 0, 0),
-                2,
-            )
-
+scale_factor = 1.0
 
 def click_event(event, x, y, flags, params):
-    global current_polygon, spot_counter
+    global current_polygon, spot_counter, img_display, scale_factor, lot_id, camera_id
     
     if event == cv2.EVENT_LBUTTONDOWN:
-        current_polygon.append([x, y])
+        # Scale display coordinates back to original image resolution (2560x1179)
+        orig_x = int(x * scale_factor)
+        orig_y = int(y * scale_factor)
+        
+        current_polygon.append([orig_x, orig_y])
+        cv2.circle(img_display, (x, y), 4, (0, 255, 0), -1)
+        
+        # Draw line between consecutive points on display
+        if len(current_polygon) > 1:
+            prev_display_x = int(current_polygon[-2][0] / scale_factor)
+            prev_display_y = int(current_polygon[-2][1] / scale_factor)
+            cv2.line(img_display, (prev_display_x, prev_display_y), (x, y), (255, 0, 0), 2)
+            
+        # Complete a 4-point polygon space
         if len(current_polygon) == 4:
+            first_display_x = int(current_polygon[0][0] / scale_factor)
+            first_display_y = int(current_polygon[0][1] / scale_factor)
+            cv2.line(img_display, (x, y), (first_display_x, first_display_y), (255, 0, 0), 2)
+            
             spot_id = f"A-{spot_counter:03d}"
+            
+            # Formatted exactly to match backend & init_db.py schema
             all_spots.append({
                 "spot_id": spot_id,
+                "camera_id": camera_id,
+                "lot_id": lot_id,
                 "polygon": current_polygon.copy()
             })
-            print(f"[SAVED]: {spot_id} -> {current_polygon}")
+            
+            print(f"[SAVED]: {spot_id} ({lot_id} / {camera_id}) -> {current_polygon}")
+            cv2.putText(img_display, spot_id, (first_display_x, first_display_y - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            
             spot_counter += 1
             current_polygon = []
 
-        redraw_overlay()
-        cv2.imshow("Draw BAC Parking Spots", img_copy)
-
-
-def undo_last_corner():
-    if not current_polygon:
-        return False
-
-    removed_point = current_polygon.pop()
-    print(f"[UNDO CORNER]: removed {removed_point}")
-    redraw_overlay()
-    cv2.imshow("Draw BAC Parking Spots", img_copy)
-    return True
-
-
-def undo_last_spot():
-    global spot_counter
-
-    if not all_spots:
-        return False
-
-    removed_spot = all_spots.pop()
-    existing_numbers = [
-        int(spot["spot_id"].rsplit("-", 1)[-1])
-        for spot in all_spots
-        if isinstance(spot.get("spot_id"), str)
-        and spot["spot_id"].rsplit("-", 1)[-1].isdigit()
-    ]
-    spot_counter = max(existing_numbers, default=0) + 1
-    print(f"[UNDO BAY]: removed {removed_spot['spot_id']}; redraw its corners.")
-    redraw_overlay()
-    cv2.imshow("Draw BAC Parking Spots", img_copy)
-    return True
+        cv2.imshow("Draw BAC Parking Spots", img_display)
 
 if __name__ == "__main__":
     if not os.path.exists(IMAGE_PATH):
-        raise FileNotFoundError(f"Parking-lot image not found: {IMAGE_PATH}")
+        print(f"Error: {IMAGE_PATH} not found.")
+        exit()
+
+    print("=== PARKING SPOT CONFIGURATION ===")
+    lot_id = input("Enter Lot ID (e.g., BAC_PARKING or LOT_A) [Default: BAC_PARKING]: ").strip() or "BAC_PARKING"
+    camera_id = input("Enter Camera ID (e.g., CAM_BAC_MAIN or CAM_01) [Default: CAM_BAC_MAIN]: ").strip() or "CAM_BAC_MAIN"
+    print(f"\nConfiguring spots for Lot: '{lot_id}' | Camera: '{camera_id}'\n")
 
     img = cv2.imread(IMAGE_PATH)
     if img is None:
-        raise ValueError(f"Could not read parking-lot image: {IMAGE_PATH}")
+        print(f"Error: Unable to load image from {IMAGE_PATH}.")
+        exit()
 
-    if os.path.exists(OUTPUT_JSON):
-        with open(OUTPUT_JSON, "r", encoding="utf-8") as f:
-            existing_spots = json.load(f)
-        if not isinstance(existing_spots, list):
-            raise ValueError(f"Expected a list of parking spaces in {OUTPUT_JSON}")
-        all_spots.extend(existing_spots)
-        existing_numbers = [
-            int(spot["spot_id"].rsplit("-", 1)[-1])
-            for spot in all_spots
-            if isinstance(spot.get("spot_id"), str)
-            and spot["spot_id"].rsplit("-", 1)[-1].isdigit()
-        ]
-        spot_counter = max(existing_numbers, default=0) + 1
+    orig_h, orig_w = img.shape[:2]
 
-    cv2.namedWindow("Draw BAC Parking Spots", cv2.WINDOW_AUTOSIZE)
-    redraw_overlay()
-    cv2.imshow("Draw BAC Parking Spots", img_copy)
+    # Calculate scale factor to shrink window for display while saving full resolution
+    scale_factor = orig_h / DISPLAY_HEIGHT
+    display_w = int(orig_w / scale_factor)
+    
+    img_display = cv2.resize(img, (display_w, DISPLAY_HEIGHT))
+
+    # Configure resizable window
+    cv2.namedWindow("Draw BAC Parking Spots", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Draw BAC Parking Spots", display_w, DISPLAY_HEIGHT)
+    
+    cv2.imshow("Draw BAC Parking Spots", img_display)
     cv2.setMouseCallback("Draw BAC Parking Spots", click_event)
 
-    print("--- PARKING SPOT MAPPING TOOL ---")
-    print(f"Image: {IMAGE_PATH} ({img.shape[1]}x{img.shape[0]})")
-    print("Click the four corners of each marked parking bay, going around its boundary.")
-    print("Map only actual parking bays, not the drive lanes or road markings.")
-    print("Backspace: undo the last corner of the bay being drawn.")
-    print("U: undo the last completed bay; redraw it with corrected corners.")
-    print("Press 's' to save all bays to configs/parking_spots.json.")
-    print("Press 'q' to exit without saving.")
+    print("--- INSTRUCTIONS ---")
+    print("1. Click 4 corners of each parking space in order.")
+    print("2. Press 's' to export all spots directly to parking_spots.json and exit.")
+    print("3. Press 'q' to quit without saving.")
 
     while True:
         key = cv2.waitKey(1) & 0xFF
-        if key in (8, 127):
-            if not undo_last_corner():
-                print("No unfinished bay corner to undo.")
-        elif key in (ord('u'), ord('U')):
-            if not undo_last_spot():
-                print("No completed bay to undo.")
-        elif key == ord('s'):
-            if current_polygon:
-                print(
-                    f"Finish this parking bay by clicking "
-                    f"{4 - len(current_polygon)} more corner(s) before saving."
-                )
-                continue
-            if not all_spots:
-                print("No parking bays mapped; nothing was saved.")
-                continue
-            with open(OUTPUT_JSON, 'w', encoding='utf-8') as f:
+        if key == ord('s'):
+            with open(OUTPUT_JSON, 'w') as f:
                 json.dump(all_spots, f, indent=2)
-            print(f"Saved {len(all_spots)} parking spaces to {OUTPUT_JSON}.")
+            print(f"\nSuccessfully exported {len(all_spots)} spots to {OUTPUT_JSON}!")
             break
         elif key == ord('q'):
+            print("\nCancelled without saving.")
             break
 
     cv2.destroyAllWindows()

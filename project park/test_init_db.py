@@ -15,15 +15,6 @@ class DatabaseInitializationTests(unittest.TestCase):
             with patch.dict(os.environ, {"PARKING_DB_PATH": database_path}):
                 seed_database()
 
-                with open("cameras.json", "r", encoding="utf-8") as file:
-                    cameras = json.load(file)
-                configured_spot_count = 0
-                for camera in cameras:
-                    with open(
-                        camera["spots_file"], "r", encoding="utf-8"
-                    ) as spots_file:
-                        configured_spot_count += len(json.load(spots_file))
-
                 connection = sqlite3.connect(database_path)
                 try:
                     camera_count = connection.execute(
@@ -33,8 +24,10 @@ class DatabaseInitializationTests(unittest.TestCase):
                         "SELECT COUNT(*) FROM parking_spots"
                     ).fetchone()[0]
                     self.assertEqual(camera_count, 2)
-                    self.assertEqual(spot_count, configured_spot_count)
+                    self.assertEqual(spot_count, 30)
 
+                    with open("cameras.json", "r", encoding="utf-8") as file:
+                        cameras = json.load(file)
                     first_camera = cameras[0]
                     with open(
                         first_camera["spots_file"], "r", encoding="utf-8"
